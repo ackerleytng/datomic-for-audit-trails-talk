@@ -146,6 +146,18 @@ Requester information should actually be attached to the action of requesting
 the firewall rule change, which is the change rather than the entry
 #+END_NOTES
 
+* Datomic Facts
+
+~[entity attribute value transaction added?]~
+
+#+ATTR_REVEAL: :frag (appear)
+#+ATTR_HTML: :style font-size:85%
+| ~entity~      | firewall-rule-entry    |
+| ~attribute~   | :firewall/name         |
+| ~value~       | "magical-unicorn"      |
+| ~transaction~ | internal reference     |
+| ~added?~      | assserted or retracted |
+
 * Summary
 
 + Reified transactions
