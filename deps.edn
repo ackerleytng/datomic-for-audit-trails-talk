@@ -2,5 +2,5 @@
  {"my.datomic.com" {:url "https://my.datomic.com/repo"}
   "clojars.org" {:url "https://clojars.org/repo"}}
  :deps
- {com.datomic/client-pro {:mvn/version "0.9.37"}
+ {com.datomic/client-pro {:mvn/version "0.9.41"}
   clj-time {:mvn/version "0.15.2"}}}

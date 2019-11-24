@@ -1,0 +1,159 @@
+#+REVEAL_INIT_OPTIONS: width:1280, height:720, margin: 0.2, transition: 'none'
+#+OPTIONS: toc:nil timestamp:nil num:nil reveal_title_slide:nil
+#+REVEAL_ROOT: https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/
+#+REVEAL_THEME: night
+#+REVEAL_PLUGINS: (markdown notes)
+
+* Exploring Datomic for Audit Trails
+
+Ackerley Tng
+
+[[https://github.com/ackerleytng][github.com/ackerleytng]]
+
+#+BEGIN_NOTES
+I am here to talk about how I found Datomic to be useful as a database for
+applications where audit trails are important.
+#+END_NOTES
+
+
+* Background
+
+#+ATTR_REVEAL: :frag (none appear)
++ Day of Datomic Cloud Workshop at Strange Loop 2019
+  + That was my introduction to Datomic
++ Many of the apps we build at work have a requirement for audit trails
+  + Who approved this?
+  + When was it approved?
+  + What changed between these two dates?
++ This talk explains what I've explored using a sample problem
+
+#+BEGIN_NOTES
+I attended Strange Loop in St Louis this year, and that's where I got this
+shirt!
+
+Strange Loop is a multi-disciplinary software conference that has talks about
+everything from languages to distributed systems and alternative databases.
+
+This conference was created by Alex Miller, one of the clojure maintainers at
+Cognitect, so naturally there was lots of clojure-related content at the
+conference.
+
+I attended the Day of Datomic Cloud workshop, which was my introduction to Datomic.
+
+Hope to help others get started more quickly, and hope to get tips from those
+of you who are more experienced in using Datomic!
+#+END_NOTES
+
+* Setting up Datomic Starter for exploration
+
+1. Hop over to https://www.datomic.com/get-datomic.html (requires free sign up)
+2. Click the downloads tab and download the latest zip
+3. Start datomic with no persistent storage
+
+#+BEGIN_SRC bash
+bin/run -m datomic.peer-server -h localhost -p 8998 -a myaccesskey,mysecret -d hello,datomic:mem://hello
+#+END_SRC
+
+* Setting up Datomic client
+
++ Add ~com.datomic/client-pro {:mvn/version "0.9.41"}~ to your deps.edn
+
+#+BEGIN_NOTES
+Using Datomic client instead of peer to get started with exploration quickly
+
+~com.datomic/client-pro~ is hosted on maven, so people don't have to set up
+my.datomic.com as another maven repository
+#+END_NOTES
+
+* Motivating Problem
+
++ Want to build a system to manage firewall rules
++ Firewall rejects all connections by default
++ Users request to allow traffic through, for selected IPv4 ranges and ports
++ Need to track who requested any changes to firewall rules
+
+* Data Model (conventional)
+
+#+ATTR_REVEAL: :frag (none appear)
++ Firewall Rule Entry
+  + Name
+  + Description
+  + Source IP Range
+  + Destination IP Range
+  + Destination Port
++ Users
+  + UUID (from SSO service)
+
+#+BEGIN_NOTES
+For conventional data models, we think of entities in the problem domain that
+we want to model, and the relationships between those.
+
+In our motivating problem, we have two entities that we want to model, the
+first of which is the obvious one, the firewall rule entries, each of which
+permit traffic to pass between a source IP range and a destination IP range, to
+a specified port. We also want users to provide a name and description for each
+of these entries.
+
+And then because we need to track the requester, we also model users. For now,
+we assume that we're going to use a UUID from an SSO service to track users,
+and hence we don't model the usual stuff like name, email address, and login
+credentials.
+#+END_NOTES
+
+* Modelling Requester Info...?
+
+#+ATTR_HTML: :style font-size:50%
+| ~name~            | ... | ~src_ip_range~   | ~dst_ip_range~    | ~port~ | ~requester~ |
+| ~magical-unicorn~ | ... | ~192.168.1.0/24~ | ~192.168.50.0/24~ | ~443~  | ~<alice>~   |
+| ~mutant-reindeer~ | ... | ~192.168.2.0/24~ | ~192.168.51.0/24~ | ~8443~ | ~<bob>~     |
+| ~magical-unicorn~ | ... | ~192.168.1.0/24~ | ~192.168.50.0/24~ | ~80~   | ~<carol>~   |
+|                   |     | ...              | ...               |        |             |
+
+#+BEGIN_NOTES
+In a traditional database, I would probably have modelled this concept of
+requester as a field in the ~firewall_rule_entry~ table, as a foreign key into
+the ~user~ table. I would perhaps have 1 row per state of each firewall rule
+entry, and every change users make would be added as a new row in the table,
+and the requester field would be updated with the person who requested this
+change.
+
+As you can probably tell, this is starting to be a mess because
++ To figure out the latest state of the firewall, I would have to pull the
+  latest version of each rule with a unique name.
++ To determine what changed with each entry, I would have to do some kind of
+  diff with the previous entry
+
+Another option would be to do event sourcing and store all the changes
+requested and cache the eventual outcome, and then we would have to code up all
+of that.
+
+This is the part that I really loved about exploring Datomic, because exploring
+Datomic allowed me to rethink the meaning of attaching a requester to a
+firewall rule entry.
+#+END_NOTES
+
+* Reified Transactions
+
+#+ATTR_REVEAL: :frag (appear)
++ Transactions are themselves entities in Datomic
+  + Can attach attribute to every transaction
++ The requester is a property of the /change/ to the firewall rule
+  entry and not the entry itself
++ Datomic automatically stores the transaction time of every transaction
+
+#+BEGIN_NOTES
+Requester information should actually be attached to the action of requesting
+the firewall rule change, which is the change rather than the entry
+#+END_NOTES
+
+* Summary
+
++ Reified transactions
++ Built-in tracking of transaction time
++ Convenient ~d/history~, ~d/since~, ~d/as-of~ functions
+
+* Thanks for listening!
+
+Slides and code available at
+
+https://github.com/ackerleytng/datomic-for-audit-trails-talk
