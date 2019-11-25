@@ -22,8 +22,9 @@ applications where audit trails are important.
 + Day of Datomic Cloud Workshop at Strange Loop 2019
   + That was my introduction to Datomic
 + Many of the apps we build at work have a requirement for audit trails
-  + Who approved this?
-  + When was it approved?
+  + Who changed this entity in the database?
+  + When was it changed in the database?
+  + Approvals - when was it approved?
   + What changed between these two dates?
 + This talk explains what I've explored using a sample problem
 
@@ -152,11 +153,11 @@ the firewall rule change, which is the change rather than the entry
 
 #+ATTR_REVEAL: :frag (appear)
 #+ATTR_HTML: :style font-size:85%
-| ~entity~      | firewall-rule-entry    |
-| ~attribute~   | :firewall/name         |
-| ~value~       | "magical-unicorn"      |
-| ~transaction~ | internal reference     |
-| ~added?~      | assserted or retracted |
+| ~entity~      | firewall-rule-entry   |
+| ~attribute~   | :firewall/name        |
+| ~value~       | "magical-unicorn"     |
+| ~transaction~ | internal reference    |
+| ~added?~      | asserted or retracted |
 
 * Summary
 
