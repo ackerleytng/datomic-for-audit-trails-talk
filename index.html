@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title></title>
+<style type="text/css">
+.underline { text-decoration: underline; }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/css/reveal.css"/>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/css/theme/night.css" id="theme"/>
+
+
+<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+<script>
+    if( window.location.search.match( /print-pdf/gi ) ) {
+        var link = document.createElement( 'link' );
+        link.rel = 'stylesheet';
+        link.type = 'text/css';
+        link.href = 'https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/css/print/pdf.css';
+        document.getElementsByTagName( 'head' )[0].appendChild( link );
+    }
+</script>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<section>
+<section id="slide-org486cbe4">
+<h2 id="org486cbe4">Exploring Datomic for Audit Trails</h2>
+<p>
+Ackerley Tng
+</p>
+
+<p>
+<a href="https://github.com/ackerleytng">github.com/ackerleytng</a>
+</p>
+
+<aside class="notes">
+<p>
+I am here to talk about how I found Datomic to be useful as a database for
+applications where audit trails are important.
+</p>
+
+</aside>
+
+
+</section>
+</section>
+<section>
+<section id="slide-orgf8c4147">
+<h2 id="orgf8c4147">Background</h2>
+<ul>
+<li>Day of Datomic Cloud Workshop at Strange Loop 2019
+<ul>
+<li>That was my introduction to Datomic</li>
+
+</ul></li>
+<li class="fragment appear">Many of the apps we build at work have a requirement for audit trails
+<ul>
+<li>Who changed this entity in the database?</li>
+<li>When was it changed in the database?</li>
+<li>Approvals - when was it approved?</li>
+<li>What changed between these two dates?</li>
+
+</ul></li>
+<li class="fragment appear">This talk explains what I've explored using a sample problem</li>
+
+</ul>
+
+<aside class="notes">
+<p>
+I attended Strange Loop in St Louis this year, and that's where I got this
+shirt!
+</p>
+
+<p>
+Strange Loop is a multi-disciplinary software conference that has talks about
+everything from languages to distributed systems and alternative databases.
+</p>
+
+<p>
+This conference was created by Alex Miller, one of the clojure maintainers at
+Cognitect, so naturally there was lots of clojure-related content at the
+conference.
+</p>
+
+<p>
+I attended the Day of Datomic Cloud workshop, which was my introduction to Datomic.
+</p>
+
+<p>
+Hope to help others get started more quickly, and hope to get tips from those
+of you who are more experienced in using Datomic!
+</p>
+
+</aside>
+
+</section>
+</section>
+<section>
+<section id="slide-org166d91c">
+<h2 id="org166d91c">Setting up Datomic Starter for exploration</h2>
+<ol>
+<li>Hop over to <a href="https://www.datomic.com/get-datomic.html">https://www.datomic.com/get-datomic.html</a> (requires free sign up)</li>
+<li>Click the downloads tab and download the latest zip</li>
+<li>Start datomic with no persistent storage</li>
+
+</ol>
+
+<div class="org-src-container">
+
+<pre  class="src src-bash"><code trim>bin/run -m datomic.peer-server -h localhost -p 8998 -a myaccesskey,mysecret -d hello,datomic:mem://hello
+</code></pre>
+</div>
+
+</section>
+</section>
+<section>
+<section id="slide-orgcf4e5ee">
+<h2 id="orgcf4e5ee">Setting up Datomic client</h2>
+<ul>
+<li>Add <code>com.datomic/client-pro {:mvn/version "0.9.41"}</code> to your deps.edn</li>
+
+</ul>
+
+<aside class="notes">
+<p>
+Using Datomic client instead of peer to get started with exploration quickly
+</p>
+
+<p>
+<code>com.datomic/client-pro</code> is hosted on maven, so people don't have to set up
+my.datomic.com as another maven repository
+</p>
+
+</aside>
+
+</section>
+</section>
+<section>
+<section id="slide-orgc756216">
+<h2 id="orgc756216">Motivating Problem</h2>
+<ul>
+<li>Want to build a system to manage firewall rules</li>
+<li>Firewall rejects all connections by default</li>
+<li>Users request to allow traffic through, for selected IPv4 ranges and ports</li>
+<li>Need to track who requested any changes to firewall rules</li>
+
+</ul>
+
+</section>
+</section>
+<section>
+<section id="slide-orgd69108b">
+<h2 id="orgd69108b">Data Model (conventional)</h2>
+<ul>
+<li>Firewall Rule Entry
+<ul>
+<li>Name</li>
+<li>Description</li>
+<li>Source IP Range</li>
+<li>Destination IP Range</li>
+<li>Destination Port</li>
+
+</ul></li>
+<li class="fragment appear">Users
+<ul>
+<li>UUID (from SSO service)</li>
+
+</ul></li>
+
+</ul>
+
+<aside class="notes">
+<p>
+For conventional data models, we think of entities in the problem domain that
+we want to model, and the relationships between those.
+</p>
+
+<p>
+In our motivating problem, we have two entities that we want to model, the
+first of which is the obvious one, the firewall rule entries, each of which
+permit traffic to pass between a source IP range and a destination IP range, to
+a specified port. We also want users to provide a name and description for each
+of these entries.
+</p>
+
+<p>
+And then because we need to track the requester, we also model users. For now,
+we assume that we're going to use a UUID from an SSO service to track users,
+and hence we don't model the usual stuff like name, email address, and login
+credentials.
+</p>
+
+</aside>
+
+</section>
+</section>
+<section>
+<section id="slide-orgd254b40">
+<h2 id="orgd254b40">Modelling Requester Info&#x2026;?</h2>
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides" style="font-size:50%">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left"><code>name</code></td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left"><code>src_ip_range</code></td>
+<td class="org-left"><code>dst_ip_range</code></td>
+<td class="org-left"><code>port</code></td>
+<td class="org-left"><code>requester</code></td>
+</tr>
+
+<tr>
+<td class="org-left"><code>magical-unicorn</code></td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left"><code>192.168.1.0/24</code></td>
+<td class="org-left"><code>192.168.50.0/24</code></td>
+<td class="org-left"><code>443</code></td>
+<td class="org-left"><code>&lt;alice&gt;</code></td>
+</tr>
+
+<tr>
+<td class="org-left"><code>mutant-reindeer</code></td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left"><code>192.168.2.0/24</code></td>
+<td class="org-left"><code>192.168.51.0/24</code></td>
+<td class="org-left"><code>8443</code></td>
+<td class="org-left"><code>&lt;bob&gt;</code></td>
+</tr>
+
+<tr>
+<td class="org-left"><code>magical-unicorn</code></td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left"><code>192.168.1.0/24</code></td>
+<td class="org-left"><code>192.168.50.0/24</code></td>
+<td class="org-left"><code>80</code></td>
+<td class="org-left"><code>&lt;carol&gt;</code></td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left">&#x2026;</td>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">&#xa0;</td>
+</tr>
+</tbody>
+</table>
+
+<aside class="notes">
+<p>
+In a traditional database, I would probably have modelled this concept of
+requester as a field in the <code>firewall_rule_entry</code> table, as a foreign key into
+the <code>user</code> table. I would perhaps have 1 row per state of each firewall rule
+entry, and every change users make would be added as a new row in the table,
+and the requester field would be updated with the person who requested this
+change.
+</p>
+
+<p>
+As you can probably tell, this is starting to be a mess because
+</p>
+<ul>
+<li>To figure out the latest state of the firewall, I would have to pull the
+latest version of each rule with a unique name.</li>
+<li>To determine what changed with each entry, I would have to do some kind of
+diff with the previous entry</li>
+
+</ul>
+
+<p>
+Another option would be to do event sourcing and store all the changes
+requested and cache the eventual outcome, and then we would have to code up all
+of that.
+</p>
+
+<p>
+This is the part that I really loved about exploring Datomic, because exploring
+Datomic allowed me to rethink the meaning of attaching a requester to a
+firewall rule entry.
+</p>
+
+</aside>
+
+</section>
+</section>
+<section>
+<section id="slide-org18c913f">
+<h2 id="org18c913f">Reified Transactions</h2>
+<ul>
+<li class="fragment appear">Transactions are themselves entities in Datomic
+<ul>
+<li>Can attach attribute to every transaction</li>
+
+</ul></li>
+<li class="fragment appear">The requester is a property of the <i>change</i> to the firewall rule
+entry and not the entry itself</li>
+<li class="fragment appear">Datomic automatically stores the transaction time of every transaction</li>
+
+</ul>
+
+<aside class="notes">
+<p>
+Requester information should actually be attached to the action of requesting
+the firewall rule change, which is the change rather than the entry
+</p>
+
+</aside>
+
+</section>
+</section>
+<section>
+<section id="slide-orgf0a846c">
+<h2 id="orgf0a846c">Datomic Facts</h2>
+<p>
+<code>[entity attribute value transaction added?]</code>
+</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides" class="fragment (appear)" style="font-size:85%">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left"><code>entity</code></td>
+<td class="org-left">firewall-rule-entry</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>attribute</code></td>
+<td class="org-left">:firewall/name</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>value</code></td>
+<td class="org-left">"magical-unicorn"</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>transaction</code></td>
+<td class="org-left">internal reference</td>
+</tr>
+
+<tr>
+<td class="org-left"><code>added?</code></td>
+<td class="org-left">asserted or retracted</td>
+</tr>
+</tbody>
+</table>
+
+</section>
+</section>
+<section>
+<section id="slide-org117054b">
+<h2 id="org117054b">Summary</h2>
+<ul>
+<li>Reified transactions</li>
+<li>Built-in tracking of transaction time</li>
+<li>Convenient <code>d/history</code>, <code>d/since</code>, <code>d/as-of</code> functions</li>
+
+</ul>
+
+</section>
+</section>
+<section>
+<section id="slide-org2eaa0dd">
+<h2 id="org2eaa0dd">Thanks for listening!</h2>
+<p>
+Slides and code available at
+</p>
+
+<p>
+<a href="https://github.com/ackerleytng/datomic-for-audit-trails-talk">https://github.com/ackerleytng/datomic-for-audit-trails-talk</a>
+</p>
+</section>
+</section>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/js/reveal.js"></script>
+
+<script>
+// Full list of configuration options available here:
+// https://github.com/hakimel/reveal.js#configuration
+Reveal.initialize({
+width:1280, height:720, margin: 0.2, transition: 'none',
+multiplex: {
+    secret: '', // null if client
+    id: '', // id, obtained from socket.io server
+    url: '' // Location of socket.io server
+},
+
+// Optional libraries used to extend on reveal.js
+dependencies: [
+ { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+ { src: 'https://cdn.jsdelivr.net/npm/reveal.js@3.8.0/plugin/notes/notes.js', async: true, condition: function() { return !!document.body.classList; } }]
+});
+</script>
+</body>
+</html>
