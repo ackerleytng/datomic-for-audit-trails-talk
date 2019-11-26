@@ -14,4 +14,4 @@ pom.xml.asc
 .cpcache/
 
 datomic-pro*
-*.html
+README.html
